@@ -5,6 +5,14 @@ All notable changes to nepapi are documented here. The format follows
 [SemVer](https://semver.org/) — the API contract itself is versioned by
 URL (`/v1/`), documented in the README's Stability section.
 
+## [Unreleased]
+
+### Added
+
+- `GET /v1/calendar/convert` — Bikram Sambat ↔ AD date conversion
+  (1970–2090 BS), table-driven and validated against 30,572 known
+  conversion pairs.
+
 ## [0.1.0] - 2026-07-11
 
 First working release: NRB forex rates, stored and re-served.

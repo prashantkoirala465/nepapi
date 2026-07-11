@@ -58,6 +58,24 @@ alpha-3) is optional — omit it for all currencies.
 }
 ```
 
+### `GET /v1/calendar/convert?date=2026-07-11`
+
+Convert between Gregorian (AD) and Bikram Sambat (BS) dates. `from=ad`
+(default) or `from=bs`; `date` is always `YYYY-MM-DD`.
+
+```json
+{
+  "bs": {"year": 2083, "month": 3, "day": 27, "month_name": "Ashadh", "month_name_ne": "असार"},
+  "ad": "2026-07-11",
+  "weekday": "Saturday"
+}
+```
+
+Supported range: 1970–2090 BS (1913-04-13 to 2034-04-13 AD). BS month
+lengths have no closed-form rule — conversion is table-driven from the
+dataset in `internal/calendar/data` (validated against 30,572 known
+conversion pairs; see the attribution file there).
+
 ### `GET /v1/health` · `GET /v1/ready`
 
 `health` is liveness (process up, checks nothing else). `ready` pings the

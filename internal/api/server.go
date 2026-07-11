@@ -76,6 +76,7 @@ func NewServer(cfg Config, forex ForexReader, db Pinger, log *slog.Logger) *Serv
 	s.mux.HandleFunc("GET /v1/ready", s.handleReady)
 	s.mux.HandleFunc("GET /v1/forex/latest", s.handleForexLatest)
 	s.mux.HandleFunc("GET /v1/forex/rates", s.handleForexRates)
+	s.mux.HandleFunc("GET /v1/calendar/convert", s.handleCalendarConvert)
 	return s
 }
 
