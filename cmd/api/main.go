@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"expvar"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/prashantkoirala465/nepapi/internal/api"
+	"github.com/prashantkoirala465/nepapi/internal/ingest"
 	"github.com/prashantkoirala465/nepapi/internal/nrb"
 	"github.com/prashantkoirala465/nepapi/internal/store"
 )
@@ -50,8 +52,14 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("migrations applied")
 
-	client := nrb.NewClient("")
-	go pollLoop(ctx, log, client, st)
+	poller := &ingest.Poller{
+		Fetcher: nrb.NewClient(""),
+		Storer:  st,
+		Log:     log,
+	}
+	go poller.Run(ctx)
+
+	go serveAdmin(ctx, log)
 
 	apiServer := api.NewServer(api.Config{
 		TrustProxy: os.Getenv("TRUST_PROXY") == "true",
@@ -79,37 +87,29 @@ func run(log *slog.Logger) error {
 	}
 }
 
-// pollLoop fetches the last 3 days immediately (covers restarts across
-// unpublished days), then re-fetches hourly. NRB publishes once daily
-// just after midnight NPT; hourly polling also picks up same-day
-// revisions.
-func pollLoop(ctx context.Context, log *slog.Logger, client *nrb.Client, st *store.Store) {
-	poll := func() {
-		to := time.Now()
-		from := to.AddDate(0, 0, -3)
-		days, err := client.RatesRange(ctx, from, to)
-		if err != nil {
-			log.Error("poll: fetching rates", "err", err)
-			return
-		}
-		for _, d := range days {
-			if err := st.UpsertDayRates(ctx, d); err != nil {
-				log.Error("poll: storing rates", "date", d.Date.Format("2006-01-02"), "err", err)
-				return
-			}
-		}
-		log.Info("poll: rates refreshed", "days", len(days))
+// serveAdmin exposes expvar metrics (poll counters, memstats) on a
+// localhost-only listener, kept off the public port on purpose.
+func serveAdmin(ctx context.Context, log *slog.Logger) {
+	port := os.Getenv("ADMIN_PORT")
+	if port == "" {
+		port = "8081"
 	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /debug/vars", expvar.Handler())
 
-	poll()
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			poll()
-		}
+	srv := &http.Server{
+		Addr:              "127.0.0.1:" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(shutdownCtx)
+	}()
+	log.Info("admin listening", "addr", srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Error("admin server", "err", err)
 	}
 }
