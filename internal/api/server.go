@@ -72,12 +72,30 @@ func NewServer(cfg Config, forex ForexReader, db Pinger, log *slog.Logger) *Serv
 		mux:     http.NewServeMux(),
 		limiter: newIPLimiter(rate.Limit(cfg.RateRPS), cfg.RateBurst),
 	}
-	s.mux.HandleFunc("GET /v1/health", s.handleHealth)
-	s.mux.HandleFunc("GET /v1/ready", s.handleReady)
-	s.mux.HandleFunc("GET /v1/forex/latest", s.handleForexLatest)
-	s.mux.HandleFunc("GET /v1/forex/rates", s.handleForexRates)
-	s.mux.HandleFunc("GET /v1/calendar/convert", s.handleCalendarConvert)
+	for _, rt := range s.routes() {
+		s.mux.HandleFunc(rt.method+" "+rt.path, rt.handler)
+	}
 	return s
+}
+
+type route struct {
+	method  string
+	path    string
+	handler http.HandlerFunc
+}
+
+// routes is the single source of truth for the API surface; the OpenAPI
+// drift test compares it against openapi.yaml.
+func (s *Server) routes() []route {
+	return []route{
+		{http.MethodGet, "/v1/health", s.handleHealth},
+		{http.MethodGet, "/v1/ready", s.handleReady},
+		{http.MethodGet, "/v1/forex/latest", s.handleForexLatest},
+		{http.MethodGet, "/v1/forex/rates", s.handleForexRates},
+		{http.MethodGet, "/v1/calendar/convert", s.handleCalendarConvert},
+		{http.MethodGet, "/v1/openapi.yaml", s.handleOpenAPISpec},
+		{http.MethodGet, "/docs", s.handleDocs},
+	}
 }
 
 // Close releases background resources (the limiter's sweep goroutine).

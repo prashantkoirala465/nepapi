@@ -20,6 +20,10 @@ A hosted instance is coming; until then, run your own
 
 ## API
 
+Machine-readable spec at [`/v1/openapi.yaml`](internal/api/openapi.yaml);
+browsable docs served at `/docs`. A drift test keeps the spec and the
+routes in sync.
+
 ### `GET /v1/forex/latest`
 
 All rates for the most recent published date.
@@ -175,8 +179,7 @@ Postgres 16 on every push and PR.
 
 Planned datasets and features are tracked in
 [issues](https://github.com/prashantkoirala465/nepapi/issues): hosted
-deployment, Bikram Sambat ↔ AD calendar conversion, public holidays,
-gold/silver prices, OpenAPI spec.
+deployment, public holidays, gold/silver prices, API keys.
 
 Non-goals: crypto prices, commercial-bank retail rates (NRB reference
 rates only), anything requiring scraping sources without stable terms.

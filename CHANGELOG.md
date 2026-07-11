@@ -12,6 +12,8 @@ URL (`/v1/`), documented in the README's Stability section.
 - `GET /v1/calendar/convert` — Bikram Sambat ↔ AD date conversion
   (1970–2090 BS), table-driven and validated against 30,572 known
   conversion pairs.
+- OpenAPI 3.1 spec served at `/v1/openapi.yaml`, browsable docs at
+  `/docs`; a drift test fails CI if the spec and routes disagree.
 
 ## [0.1.0] - 2026-07-11
 
