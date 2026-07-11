@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/prashantkoirala465/nepapi/internal/nrb"
 )
 
@@ -22,6 +24,8 @@ type ForexRate struct {
 
 // UpsertDayRates stores all rates for one published day, replacing any
 // previously fetched values (NRB occasionally revises same-day rates).
+// All rows go in one batched round-trip inside one transaction — a
+// year's backfill is ~7000 rows and per-row round-trips add up.
 func (s *Store) UpsertDayRates(ctx context.Context, day nrb.DayRates) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -29,8 +33,9 @@ func (s *Store) UpsertDayRates(ctx context.Context, day nrb.DayRates) error {
 	}
 	defer tx.Rollback(ctx)
 
+	batch := &pgx.Batch{}
 	for _, r := range day.Rates {
-		if _, err := tx.Exec(ctx, `
+		batch.Queue(`
 			INSERT INTO forex_rates (date, currency_iso3, currency_name, unit, buy, sell, published_on)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (date, currency_iso3) DO UPDATE SET
@@ -41,9 +46,18 @@ func (s *Store) UpsertDayRates(ctx context.Context, day nrb.DayRates) error {
 				published_on = EXCLUDED.published_on,
 				fetched_at = now()`,
 			day.Date, r.ISO3, r.Name, r.Unit, r.Buy, r.Sell, parsePublishedOn(day.PublishedOn),
-		); err != nil {
+		)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	for _, r := range day.Rates {
+		if _, err := br.Exec(); err != nil {
+			br.Close()
 			return fmt.Errorf("store: upserting %s %s: %w", day.Date.Format("2006-01-02"), r.ISO3, err)
 		}
+	}
+	if err := br.Close(); err != nil {
+		return fmt.Errorf("store: closing batch: %w", err)
 	}
 	return tx.Commit(ctx)
 }
