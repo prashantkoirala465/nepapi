@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/prashantkoirala465/nepapi/internal/store"
 )
 
@@ -27,15 +29,45 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-type Server struct {
-	forex ForexReader
-	db    Pinger
-	log   *slog.Logger
-	mux   *http.ServeMux
+// Config carries deployment-specific server settings.
+type Config struct {
+	// TrustProxy enables X-Forwarded-For for client identification.
+	// Only set when running behind a reverse proxy you control.
+	TrustProxy bool
+	// RateRPS/RateBurst shape the per-IP token bucket. Zero values
+	// fall back to 2 req/s with bursts of 30.
+	RateRPS   float64
+	RateBurst int
 }
 
-func NewServer(forex ForexReader, db Pinger, log *slog.Logger) *Server {
-	s := &Server{forex: forex, db: db, log: log, mux: http.NewServeMux()}
+func (c *Config) applyDefaults() {
+	if c.RateRPS == 0 {
+		c.RateRPS = 2
+	}
+	if c.RateBurst == 0 {
+		c.RateBurst = 30
+	}
+}
+
+type Server struct {
+	cfg     Config
+	forex   ForexReader
+	db      Pinger
+	log     *slog.Logger
+	mux     *http.ServeMux
+	limiter *ipLimiter
+}
+
+func NewServer(cfg Config, forex ForexReader, db Pinger, log *slog.Logger) *Server {
+	cfg.applyDefaults()
+	s := &Server{
+		cfg:     cfg,
+		forex:   forex,
+		db:      db,
+		log:     log,
+		mux:     http.NewServeMux(),
+		limiter: newIPLimiter(rate.Limit(cfg.RateRPS), cfg.RateBurst),
+	}
 	s.mux.HandleFunc("GET /v1/health", s.handleHealth)
 	s.mux.HandleFunc("GET /v1/ready", s.handleReady)
 	s.mux.HandleFunc("GET /v1/forex/latest", s.handleForexLatest)
@@ -43,12 +75,15 @@ func NewServer(forex ForexReader, db Pinger, log *slog.Logger) *Server {
 	return s
 }
 
+// Close releases background resources (the limiter's sweep goroutine).
+func (s *Server) Close() { s.limiter.Stop() }
+
 // Handler returns the full middleware-wrapped handler.
 func (s *Server) Handler() http.Handler {
 	var h http.Handler = s.mux
-	h = rateLimit(h)
+	h = s.rateLimit(h)
 	h = cors(h)
-	h = requestLog(s.log, h)
+	h = s.requestLog(h)
 	return h
 }
 

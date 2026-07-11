@@ -53,9 +53,14 @@ func run(log *slog.Logger) error {
 	client := nrb.NewClient("")
 	go pollLoop(ctx, log, client, st)
 
+	apiServer := api.NewServer(api.Config{
+		TrustProxy: os.Getenv("TRUST_PROXY") == "true",
+	}, st, st, log)
+	defer apiServer.Close()
+
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           api.NewServer(st, st, log).Handler(),
+		Handler:           apiServer.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

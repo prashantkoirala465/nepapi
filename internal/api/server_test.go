@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +37,11 @@ type fakePinger struct{ err error }
 func (p *fakePinger) Ping(ctx context.Context) error { return p.err }
 
 func testServer(f *fakeForex) http.Handler {
-	return NewServer(f, &fakePinger{}, slog.New(slog.DiscardHandler)).Handler()
+	return testServerCfg(Config{}, f)
+}
+
+func testServerCfg(cfg Config, f *fakeForex) http.Handler {
+	return NewServer(cfg, f, &fakePinger{}, slog.New(slog.DiscardHandler)).Handler()
 }
 
 func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
@@ -63,7 +68,7 @@ func TestReady(t *testing.T) {
 }
 
 func TestReadyDatabaseDown(t *testing.T) {
-	h := NewServer(&fakeForex{}, &fakePinger{err: errors.New("connection refused")}, slog.New(slog.DiscardHandler)).Handler()
+	h := NewServer(Config{}, &fakeForex{}, &fakePinger{err: errors.New("connection refused")}, slog.New(slog.DiscardHandler)).Handler()
 	rec := get(t, h, "/v1/ready")
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
@@ -139,9 +144,9 @@ func TestForexRatesPassesCurrencyFilter(t *testing.T) {
 }
 
 func TestRateLimitKicksIn(t *testing.T) {
-	h := testServer(&fakeForex{})
+	h := testServerCfg(Config{RateRPS: 1, RateBurst: 5}, &fakeForex{})
 	var limited bool
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 10; i++ {
 		rec := get(t, h, "/v1/health")
 		if rec.Code == http.StatusTooManyRequests {
 			limited = true
@@ -149,7 +154,44 @@ func TestRateLimitKicksIn(t *testing.T) {
 		}
 	}
 	if !limited {
-		t.Error("rate limiter never returned 429 after 60 rapid requests")
+		t.Error("rate limiter never returned 429 after 10 rapid requests with burst 5")
+	}
+}
+
+func TestRateLimitIgnoresSpoofedForwardedFor(t *testing.T) {
+	// TrustProxy off: rotating X-Forwarded-For must NOT reset the
+	// bucket, since all requests share the same RemoteAddr.
+	h := testServerCfg(Config{RateRPS: 1, RateBurst: 5}, &fakeForex{})
+	var limited bool
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+		req.RemoteAddr = "192.0.2.1:1234"
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.0.0.%d", i))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Error("spoofed X-Forwarded-For bypassed the rate limiter with TrustProxy off")
+	}
+}
+
+func TestRateLimitHonorsForwardedForBehindProxy(t *testing.T) {
+	// TrustProxy on: distinct client IPs in X-Forwarded-For get
+	// separate buckets even through one proxy connection.
+	h := testServerCfg(Config{TrustProxy: true, RateRPS: 1, RateBurst: 5}, &fakeForex{})
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+		req.RemoteAddr = "127.0.0.1:9999" // the proxy
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.0.0.%d", i))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("request %d limited despite unique forwarded client IPs", i)
+		}
 	}
 }
 

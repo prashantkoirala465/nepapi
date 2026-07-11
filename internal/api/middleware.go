@@ -1,9 +1,9 @@
 package api
 
 import (
-	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,17 +12,17 @@ import (
 
 // requestLog logs one line per request with method, path, status, and
 // duration.
-func requestLog(log *slog.Logger, next http.Handler) http.Handler {
+func (s *Server) requestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		log.Info("request",
+		s.log.Info("request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(),
-			"remote", clientIP(r),
+			"remote", s.clientIP(r),
 		)
 	})
 }
@@ -51,11 +51,15 @@ func cors(next http.Handler) http.Handler {
 	})
 }
 
-// ipLimiter hands out one token-bucket limiter per client IP: 2 req/s
-// sustained, bursts of 30. Idle entries are dropped by a background sweep.
+// ipLimiter hands out one token-bucket limiter per client IP. Idle
+// entries are dropped by a background sweep, which Stop terminates.
 type ipLimiter struct {
+	rps   rate.Limit
+	burst int
+
 	mu      sync.Mutex
 	clients map[string]*clientLimiter
+	done    chan struct{}
 }
 
 type clientLimiter struct {
@@ -63,10 +67,13 @@ type clientLimiter struct {
 	lastSeen time.Time
 }
 
-var limiter = newIPLimiter()
-
-func newIPLimiter() *ipLimiter {
-	l := &ipLimiter{clients: make(map[string]*clientLimiter)}
+func newIPLimiter(rps rate.Limit, burst int) *ipLimiter {
+	l := &ipLimiter{
+		rps:     rps,
+		burst:   burst,
+		clients: make(map[string]*clientLimiter),
+		done:    make(chan struct{}),
+	}
 	go l.sweep()
 	return l
 }
@@ -76,28 +83,37 @@ func (l *ipLimiter) allow(ip string) bool {
 	defer l.mu.Unlock()
 	c, ok := l.clients[ip]
 	if !ok {
-		c = &clientLimiter{limiter: rate.NewLimiter(rate.Limit(2), 30)}
+		c = &clientLimiter{limiter: rate.NewLimiter(l.rps, l.burst)}
 		l.clients[ip] = c
 	}
 	c.lastSeen = time.Now()
 	return c.limiter.Allow()
 }
 
+func (l *ipLimiter) Stop() { close(l.done) }
+
 func (l *ipLimiter) sweep() {
-	for range time.Tick(time.Minute) {
-		l.mu.Lock()
-		for ip, c := range l.clients {
-			if time.Since(c.lastSeen) > 3*time.Minute {
-				delete(l.clients, ip)
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-l.done:
+			return
+		case <-ticker.C:
+			l.mu.Lock()
+			for ip, c := range l.clients {
+				if time.Since(c.lastSeen) > 3*time.Minute {
+					delete(l.clients, ip)
+				}
 			}
+			l.mu.Unlock()
 		}
-		l.mu.Unlock()
 	}
 }
 
-func rateLimit(next http.Handler) http.Handler {
+func (s *Server) rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !limiter.allow(clientIP(r)) {
+		if !s.limiter.allow(s.clientIP(r)) {
 			w.Header().Set("Retry-After", "1")
 			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -106,11 +122,19 @@ func rateLimit(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP prefers X-Forwarded-For (set by the reverse proxy in
-// production) and falls back to the connection's remote address.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
+// clientIP identifies the caller for rate limiting. X-Forwarded-For is
+// only honored when the server is configured as running behind a
+// trusted reverse proxy — otherwise any client could spoof the header
+// and dodge the limiter.
+func (s *Server) clientIP(r *http.Request) string {
+	if s.cfg.TrustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			// left-most entry is the original client
+			if ip, _, ok := strings.Cut(xff, ","); ok {
+				return strings.TrimSpace(ip)
+			}
+			return strings.TrimSpace(xff)
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
