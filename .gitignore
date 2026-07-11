@@ -1,0 +1,13 @@
+# binaries
+/bin/
+*.exe
+
+# env & local config
+.env
+.env.*
+
+# OS noise
+.DS_Store
+
+# test artifacts
+coverage.out
