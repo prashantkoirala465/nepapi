@@ -31,8 +31,12 @@ func (f *fakeForex) RatesRange(ctx context.Context, from, to time.Time, iso3 str
 	return f.ranged, f.err
 }
 
+type fakePinger struct{ err error }
+
+func (p *fakePinger) Ping(ctx context.Context) error { return p.err }
+
 func testServer(f *fakeForex) http.Handler {
-	return NewServer(f, slog.New(slog.DiscardHandler)).Handler()
+	return NewServer(f, &fakePinger{}, slog.New(slog.DiscardHandler)).Handler()
 }
 
 func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
@@ -48,6 +52,21 @@ func TestHealth(t *testing.T) {
 	rec := get(t, testServer(&fakeForex{}), "/v1/health")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestReady(t *testing.T) {
+	rec := get(t, testServer(&fakeForex{}), "/v1/ready")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestReadyDatabaseDown(t *testing.T) {
+	h := NewServer(&fakeForex{}, &fakePinger{err: errors.New("connection refused")}, slog.New(slog.DiscardHandler)).Handler()
+	rec := get(t, h, "/v1/ready")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
 	}
 }
 

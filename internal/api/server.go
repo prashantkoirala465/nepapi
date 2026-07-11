@@ -22,15 +22,22 @@ type ForexReader interface {
 	RatesRange(ctx context.Context, from, to time.Time, iso3 string) ([]store.ForexRate, error)
 }
 
+// Pinger reports whether the backing database is reachable.
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
 type Server struct {
 	forex ForexReader
+	db    Pinger
 	log   *slog.Logger
 	mux   *http.ServeMux
 }
 
-func NewServer(forex ForexReader, log *slog.Logger) *Server {
-	s := &Server{forex: forex, log: log, mux: http.NewServeMux()}
+func NewServer(forex ForexReader, db Pinger, log *slog.Logger) *Server {
+	s := &Server{forex: forex, db: db, log: log, mux: http.NewServeMux()}
 	s.mux.HandleFunc("GET /v1/health", s.handleHealth)
+	s.mux.HandleFunc("GET /v1/ready", s.handleReady)
 	s.mux.HandleFunc("GET /v1/forex/latest", s.handleForexLatest)
 	s.mux.HandleFunc("GET /v1/forex/rates", s.handleForexRates)
 	return s
@@ -45,8 +52,22 @@ func (s *Server) Handler() http.Handler {
 	return h
 }
 
+// handleHealth is a liveness probe: the process is up and serving.
+// It deliberately checks nothing else.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleReady is a readiness probe: 200 only if the database answers.
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := s.db.Ping(ctx); err != nil {
+		s.log.Error("readiness check failed", "err", err)
+		writeError(w, http.StatusServiceUnavailable, "database unreachable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
 func (s *Server) handleForexLatest(w http.ResponseWriter, r *http.Request) {

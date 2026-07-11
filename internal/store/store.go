@@ -31,6 +31,10 @@ func New(ctx context.Context, databaseURL string) (*Store, error) {
 
 func (s *Store) Close() { s.pool.Close() }
 
+// Ping reports whether the database is reachable; used by the
+// readiness endpoint.
+func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
+
 // Migrate applies embedded SQL migrations in filename order, tracking
 // applied files in schema_migrations. Each migration runs in its own
 // transaction.
