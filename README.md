@@ -1,7 +1,6 @@
 # nepapi
 
 [![CI](https://github.com/prashantkoirala465/nepapi/actions/workflows/ci.yml/badge.svg)](https://github.com/prashantkoirala465/nepapi/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/prashantkoirala465/nepapi)](https://goreportcard.com/report/github.com/prashantkoirala465/nepapi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A public JSON API for Nepal's public data, starting with **daily foreign
