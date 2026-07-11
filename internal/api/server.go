@@ -93,6 +93,7 @@ func (s *Server) routes() []route {
 		{http.MethodGet, "/v1/forex/latest", s.handleForexLatest},
 		{http.MethodGet, "/v1/forex/rates", s.handleForexRates},
 		{http.MethodGet, "/v1/calendar/convert", s.handleCalendarConvert},
+		{http.MethodGet, "/v1/holidays", s.handleHolidays},
 		{http.MethodGet, "/v1/openapi.yaml", s.handleOpenAPISpec},
 		{http.MethodGet, "/docs", s.handleDocs},
 	}

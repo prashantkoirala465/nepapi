@@ -80,6 +80,23 @@ lengths have no closed-form rule — conversion is table-driven from the
 dataset in `internal/calendar/data` (validated against 30,572 known
 conversion pairs; see the attribution file there).
 
+### `GET /v1/holidays?year=2082`
+
+Nepal's national public holidays for a BS year (defaults to the current
+one). Hand-curated dataset — currently 2082 and 2083 — with per-entry
+provenance in `internal/holiday/data/ATTRIBUTION.md`. Islamic holidays
+are added per-year once their moon-sighted dates are confirmed.
+
+```json
+{
+  "year": 2082,
+  "count": 34,
+  "holidays": [
+    {"bs": {"year": 2082, "month": 6, "day": 16}, "ad": "2025-10-02", "weekday": "Thursday", "name": "Vijaya Dashami", "name_ne": "विजयादशमी"}
+  ]
+}
+```
+
 ### `GET /v1/health` · `GET /v1/ready`
 
 `health` is liveness (process up, checks nothing else). `ready` pings the
@@ -179,7 +196,7 @@ Postgres 16 on every push and PR.
 
 Planned datasets and features are tracked in
 [issues](https://github.com/prashantkoirala465/nepapi/issues): hosted
-deployment, public holidays, gold/silver prices, API keys.
+deployment, gold/silver prices, API keys.
 
 Non-goals: crypto prices, commercial-bank retail rates (NRB reference
 rates only), anything requiring scraping sources without stable terms.

@@ -14,6 +14,9 @@ URL (`/v1/`), documented in the README's Stability section.
   conversion pairs.
 - OpenAPI 3.1 spec served at `/v1/openapi.yaml`, browsable docs at
   `/docs`; a drift test fails CI if the spec and routes disagree.
+- `GET /v1/holidays` — Nepal's national public holidays per BS year
+  (2082–2083), hand-curated with per-entry provenance; AD dates are
+  computed from the calendar package so the two can never disagree.
 
 ## [0.1.0] - 2026-07-11
 

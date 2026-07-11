@@ -132,6 +132,52 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /v1/holidays:
+    get:
+      operationId: holidays
+      summary: Nepal's national public holidays for one BS year
+      description: |
+        Hand-curated dataset, one file per BS year (currently 2082 and
+        2083). Islamic holidays are excluded until their moon-sighted
+        dates are confirmed; see the dataset's attribution notes in the
+        repository. Defaults to the current BS year.
+      parameters:
+        - name: year
+          in: query
+          required: false
+          description: BS year. Defaults to the current BS year.
+          schema: {type: integer}
+          example: 2082
+      responses:
+        "200":
+          description: Holidays in date order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [year, count, holidays]
+                properties:
+                  year: {type: integer, example: 2082}
+                  count: {type: integer, example: 34}
+                  holidays:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Holiday"
+        "400":
+          description: Malformed year
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Year outside the curated dataset; message lists available years
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /v1/health:
     get:
       operationId: health
@@ -238,6 +284,35 @@ components:
         weekday:
           type: string
           example: Saturday
+
+    Holiday:
+      type: object
+      required: [bs, ad, weekday, name, name_ne]
+      properties:
+        bs:
+          type: object
+          required: [year, month, day]
+          properties:
+            year: {type: integer, example: 2082}
+            month: {type: integer, example: 6}
+            day: {type: integer, example: 16}
+        ad:
+          type: string
+          format: date
+          example: "2025-10-02"
+        weekday:
+          type: string
+          example: Thursday
+        name:
+          type: string
+          example: Vijaya Dashami
+        name_ne:
+          type: string
+          example: विजयादशमी
+        note:
+          type: string
+          description: Present when the holiday applies to specific districts (e.g. the two-day Holi split).
+          example: hilly districts
 
     Error:
       type: object
