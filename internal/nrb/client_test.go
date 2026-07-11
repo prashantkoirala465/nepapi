@@ -60,7 +60,7 @@ func TestRatesRange(t *testing.T) {
 		t.Errorf("day 0 date = %v, want %v", days[0].Date, from)
 	}
 	usd := days[0].Rates[0]
-	if usd.ISO3 != "USD" || usd.Buy != 152.33 || usd.Sell != 152.93 || usd.Unit != 1 {
+	if usd.ISO3 != "USD" || usd.Buy != "152.33" || usd.Sell != "152.93" || usd.Unit != 1 {
 		t.Errorf("unexpected USD rate: %+v", usd)
 	}
 	inr := days[0].Rates[1]

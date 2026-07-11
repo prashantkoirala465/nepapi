@@ -8,14 +8,16 @@ import (
 	"github.com/prashantkoirala465/nepapi/internal/nrb"
 )
 
-// ForexRate is one currency's stored quote for one date.
+// ForexRate is one currency's stored quote for one date. Buy and Sell
+// are decimal strings (e.g. "152.33"): Postgres numeric in, exact
+// digits out — floats never touch money on the way through.
 type ForexRate struct {
 	Date time.Time `json:"date"`
 	ISO3 string    `json:"iso3"`
 	Name string    `json:"name"`
 	Unit int       `json:"unit"`
-	Buy  float64   `json:"buy"`
-	Sell float64   `json:"sell"`
+	Buy  string    `json:"buy"`
+	Sell string    `json:"sell"`
 }
 
 // UpsertDayRates stores all rates for one published day, replacing any
@@ -63,7 +65,8 @@ func parsePublishedOn(v string) *time.Time {
 // LatestRates returns all rates for the most recent stored date.
 func (s *Store) LatestRates(ctx context.Context) ([]ForexRate, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT date, currency_iso3, currency_name, unit, buy, sell
+		SELECT date, currency_iso3, currency_name, unit,
+		       trim_scale(buy)::text, trim_scale(sell)::text
 		FROM forex_rates
 		WHERE date = (SELECT max(date) FROM forex_rates)
 		ORDER BY currency_iso3`)
@@ -78,7 +81,8 @@ func (s *Store) LatestRates(ctx context.Context) ([]ForexRate, error) {
 // currency (ISO3), ordered by date then currency.
 func (s *Store) RatesRange(ctx context.Context, from, to time.Time, iso3 string) ([]ForexRate, error) {
 	query := `
-		SELECT date, currency_iso3, currency_name, unit, buy, sell
+		SELECT date, currency_iso3, currency_name, unit,
+		       trim_scale(buy)::text, trim_scale(sell)::text
 		FROM forex_rates
 		WHERE date BETWEEN $1 AND $2`
 	args := []any{from, to}

@@ -33,13 +33,15 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// Rate is a single currency's buy/sell quote for one day.
+// Rate is a single currency's buy/sell quote for one day. Buy and Sell
+// are kept as decimal strings exactly as NRB publishes them — parsing
+// money into floats invites rounding artifacts.
 type Rate struct {
 	ISO3 string
 	Name string
 	Unit int
-	Buy  float64
-	Sell float64
+	Buy  string
+	Sell string
 }
 
 // DayRates is the full set of published rates for one date.
@@ -130,20 +132,18 @@ func (c *Client) fetchPage(ctx context.Context, from, to time.Time, page int) ([
 		}
 		day := DayRates{Date: date, PublishedOn: p.PublishedOn}
 		for _, r := range p.Rates {
-			buy, err := strconv.ParseFloat(r.Buy, 64)
-			if err != nil {
+			if _, err := strconv.ParseFloat(r.Buy, 64); err != nil {
 				return nil, fmt.Errorf("nrb: bad buy rate %q for %s on %s: %w", r.Buy, r.Currency.ISO3, p.Date, err)
 			}
-			sell, err := strconv.ParseFloat(r.Sell, 64)
-			if err != nil {
+			if _, err := strconv.ParseFloat(r.Sell, 64); err != nil {
 				return nil, fmt.Errorf("nrb: bad sell rate %q for %s on %s: %w", r.Sell, r.Currency.ISO3, p.Date, err)
 			}
 			day.Rates = append(day.Rates, Rate{
 				ISO3: r.Currency.ISO3,
 				Name: r.Currency.Name,
 				Unit: r.Currency.Unit,
-				Buy:  buy,
-				Sell: sell,
+				Buy:  r.Buy,
+				Sell: r.Sell,
 			})
 		}
 		days = append(days, day)

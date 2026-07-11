@@ -54,7 +54,7 @@ func TestHealth(t *testing.T) {
 func TestForexLatest(t *testing.T) {
 	date := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	f := &fakeForex{latest: []store.ForexRate{
-		{Date: date, ISO3: "USD", Name: "U.S. Dollar", Unit: 1, Buy: 152.33, Sell: 152.93},
+		{Date: date, ISO3: "USD", Name: "U.S. Dollar", Unit: 1, Buy: "152.33", Sell: "152.93"},
 	}}
 	rec := get(t, testServer(f), "/v1/forex/latest")
 	if rec.Code != http.StatusOK {

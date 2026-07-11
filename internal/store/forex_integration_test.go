@@ -41,14 +41,14 @@ func TestIntegrationUpsertAndLatest(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	usd := nrb.Rate{ISO3: "USD", Name: "U.S. Dollar", Unit: 1, Buy: 152.33, Sell: 152.93}
-	inr := nrb.Rate{ISO3: "INR", Name: "Indian Rupee", Unit: 100, Buy: 160.00, Sell: 160.15}
+	usd := nrb.Rate{ISO3: "USD", Name: "U.S. Dollar", Unit: 1, Buy: "152.33", Sell: "152.93"}
+	inr := nrb.Rate{ISO3: "INR", Name: "Indian Rupee", Unit: 100, Buy: "160.00", Sell: "160.15"}
 
 	if err := s.UpsertDayRates(ctx, day("2026-07-10", usd, inr)); err != nil {
 		t.Fatalf("upserting day 1: %v", err)
 	}
 	usd2 := usd
-	usd2.Buy, usd2.Sell = 152.40, 153.00
+	usd2.Buy, usd2.Sell = "152.40", "153.00"
 	if err := s.UpsertDayRates(ctx, day("2026-07-11", usd2)); err != nil {
 		t.Fatalf("upserting day 2: %v", err)
 	}
@@ -60,7 +60,8 @@ func TestIntegrationUpsertAndLatest(t *testing.T) {
 	if len(latest) != 1 {
 		t.Fatalf("latest has %d rates, want 1 (only USD on newest date)", len(latest))
 	}
-	if latest[0].ISO3 != "USD" || latest[0].Buy != 152.40 {
+	// trim_scale drops trailing zeros: "152.40" comes back as "152.4".
+	if latest[0].ISO3 != "USD" || latest[0].Buy != "152.4" || latest[0].Sell != "153" {
 		t.Errorf("unexpected latest rate: %+v", latest[0])
 	}
 }
@@ -69,12 +70,12 @@ func TestIntegrationUpsertRevisesSameDay(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	orig := nrb.Rate{ISO3: "USD", Name: "U.S. Dollar", Unit: 1, Buy: 152.33, Sell: 152.93}
+	orig := nrb.Rate{ISO3: "USD", Name: "U.S. Dollar", Unit: 1, Buy: "152.33", Sell: "152.93"}
 	if err := s.UpsertDayRates(ctx, day("2026-07-10", orig)); err != nil {
 		t.Fatalf("first upsert: %v", err)
 	}
 	revised := orig
-	revised.Buy = 152.50
+	revised.Buy = "152.55"
 	if err := s.UpsertDayRates(ctx, day("2026-07-10", revised)); err != nil {
 		t.Fatalf("revised upsert: %v", err)
 	}
@@ -83,7 +84,7 @@ func TestIntegrationUpsertRevisesSameDay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LatestRates: %v", err)
 	}
-	if len(latest) != 1 || latest[0].Buy != 152.50 {
+	if len(latest) != 1 || latest[0].Buy != "152.55" {
 		t.Fatalf("revision not applied, got %+v", latest)
 	}
 }
@@ -92,8 +93,8 @@ func TestIntegrationRatesRange(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	usd := nrb.Rate{ISO3: "USD", Name: "U.S. Dollar", Unit: 1, Buy: 152.33, Sell: 152.93}
-	inr := nrb.Rate{ISO3: "INR", Name: "Indian Rupee", Unit: 100, Buy: 160.00, Sell: 160.15}
+	usd := nrb.Rate{ISO3: "USD", Name: "U.S. Dollar", Unit: 1, Buy: "152.33", Sell: "152.93"}
+	inr := nrb.Rate{ISO3: "INR", Name: "Indian Rupee", Unit: 100, Buy: "160.00", Sell: "160.15"}
 	for _, d := range []string{"2026-07-08", "2026-07-09", "2026-07-10"} {
 		if err := s.UpsertDayRates(ctx, day(d, usd, inr)); err != nil {
 			t.Fatalf("upserting %s: %v", d, err)
