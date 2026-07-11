@@ -17,6 +17,10 @@ import (
 // decades of rows.
 const maxRangeDays = 366
 
+// queryTimeout bounds each handler's database work; a slow query
+// shouldn't hold a connection for as long as the client cares to wait.
+const queryTimeout = 5 * time.Second
+
 // ForexReader is the read surface handlers need; *store.Store satisfies
 // it, tests use a fake.
 type ForexReader interface {
@@ -106,7 +110,9 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleForexLatest(w http.ResponseWriter, r *http.Request) {
-	rates, err := s.forex.LatestRates(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
+	defer cancel()
+	rates, err := s.forex.LatestRates(ctx)
 	if err != nil {
 		s.serverError(w, r, err)
 		return
@@ -143,7 +149,9 @@ func (s *Server) handleForexRates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rates, err := s.forex.RatesRange(r.Context(), from, to, q.Get("currency"))
+	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
+	defer cancel()
+	rates, err := s.forex.RatesRange(ctx, from, to, q.Get("currency"))
 	if err != nil {
 		s.serverError(w, r, err)
 		return
